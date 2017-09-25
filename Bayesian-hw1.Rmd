@@ -1,0 +1,197 @@
+---
+title: "HW1"
+author: "Tianyi Wang, tw2567"
+date: "2017/9/16"
+output: html_document
+---
+
+#chp 1, 9 
+##(a)
+
+```{r}
+simulation=function(){
+  t=0 #current time
+  num.patients=0
+  num.wait=0
+  waiting.time=NULL
+  n1=0 #whether doctor 1 has patient
+  n2=0
+  n3=0
+  t.leave=rep(0,3) #the time doctor i can accept new patient
+  time.points=NULL
+  wait=NULL
+  while (t<=420){
+    t.patient=rexp(n=1,rate=0.1)
+    t=t+t.patient   #update current time
+    if (t<=420){
+      num.patients=num.patients+1
+      w=0
+      if (t>=t.leave[1]){n1=0}
+      if (t>=t.leave[2]){n2=0}
+      if (t>=t.leave[3]){n3=0}
+      if (n1==0){    
+        n1=1
+        t.leave[1]=t+runif(1,5,20)
+      } else { 
+        if (n1==1 & n2==0){
+          n2=1
+          t.leave[2]=t+runif(1,5,20)
+        } else {
+          if (n1==1 & n2==1 & n3==0){
+            n3=1
+            t.leave[3]=t+runif(1,5,20)
+          } else {
+            num.wait=num.wait+1
+            wt=min(t.leave)-t
+            waiting.time=c(waiting.time,wt)
+            t.leave[which.min(t.leave)]=t.leave[which.min(t.leave)]+runif(1,5,20)
+            w=1
+          }
+        }
+      }
+      time.points=c(time.points,t)
+      wait=c(wait,w)
+    }
+  }
+  if (max(t.leave)>=420){
+    close.minute=ceiling((max(t.leave)/60-7)*60)
+    if (close.minute<10){
+      close.minute=paste("0",close.minute,sep="")
+    }
+    close.time=paste("16:",close.minute,sep="")
+  }
+  if (max(t.leave)<420){
+    close.minute=ceiling((max(t.leave)/60-6)*60)
+    close.time=paste("15:",close.minute,sep="")
+  }
+  result=list(num.patients=num.patients,num.wait=num.wait,average.waiting.time=mean(waiting.time),
+              total.working.minutes=max(t.leave),closing.time=close.time)
+  return(result)
+}
+simulation()
+```
+
+##(b)
+
+```{r,warning=FALSE}
+number.patients_=rep(0,100)
+number.wait_=rep(0,100)
+average.waits_=rep(0,100)
+total.working.minutes_=rep(0,100)
+for (i in 1:100){
+  s=simulation()
+  number.patients_[i]=s$num.patients
+  number.wait_[i]=s$num.wait
+  average.waits_[i]=s$average.waiting.time
+  total.working.minutes_[i]=s$total.working.minutes
+}
+results=data.frame(number.patients_,number.wait_,average.waits_,total.working.minutes_)
+results$average.waits_[which(is.na(average.waits_))]=0
+```
+
+```{r,warning=FALSE}
+time.format=function(x){
+  if (x>=420){
+    close.minute=ceiling((x/60-7)*60)
+    if (close.minute<10){
+      close.minute=paste("0",close.minute,sep="")
+    }
+    close.time=paste("16:",close.minute,sep="")
+  }
+  if (x<420){
+    close.minute=ceiling((x/60-6)*60)
+    close.time=paste("15:",close.minute,sep="")
+  }
+  return(close.time)
+}
+```
+
+###medians of the summaries
+
+```{r}
+apply(results,2,median)
+```
+
+###median closing time
+
+```{r}
+time.format(apply(results,2,median)[4])
+```
+
+###50% intervals
+
+```{r,warning=FALSE}
+intervals.lower=function(x){
+  return(quantile(x,0.25))
+}
+lower=apply(results,2,intervals.lower)
+interval.upper=function(x){
+  return(quantile(x,0.75))
+}
+upper=apply(results,2,interval.upper)
+lower.time=time.format(lower[4])
+upper.time=time.format(upper[4])
+list(
+  number.patients=paste("(",lower[1],",",upper[1],")",sep=""),
+  number.wait=paste("(",lower[2],",",upper[2],")",sep=""),
+  average.waiting.time=paste("(",round(lower[3],2),",",round(upper[3],2),")",sep=""),
+  closing.time=paste("(",lower.time,",",upper.time,")",sep="")
+)
+```
+
+#Chp 2, 21
+
+##(a)
+
+I also excluded D.C.
+
+```{r,warning=FALSE}
+library(foreign)
+pew=read.dta("C://Users//Think//Downloads//Pew.dta")
+pew <- pew[,c("ideo", "state")]
+elect=read.csv("C://Users//Think//Downloads//Elect.csv")
+index1=which(pew$state=="hawaii"|pew$state=="alaska"|pew$state=="washington dc")
+pew=pew[-index1,]
+index2=which(elect$state=="Alaska"|elect$state=="Hawaii"|elect$state=="District of Columbia")
+elect=elect[-index2,]
+library(reshape2)
+pew1=dcast(pew,state~ideo)
+pew1=pew1[,-7]
+total=rowSums(pew1[,-c(1,7)])
+very.liberal.prop=pew1$`very liberal`/total
+states=state.abb
+index3=which(states=="AL"|states=="HI")
+states=states[-index3]
+plot(y=very.liberal.prop,x=elect$vote_Obama_pct)
+text(elect$vote_Obama_pct,very.liberal.prop,labels=states,cex=0.7,pos = 3)
+```
+
+##(b)
+
+Prior distribution : y_i|¦Èj=Binomial(n_i,¦Èj), ¦Èj~Beta(13,260)
+
+```{r,warning=FALSE}
+alpha.posterior=rep(0,48)
+beta.posterior=rep(0,48)
+for (i in 1:48){
+  alpha.posterior[i]=13+pew1$`very liberal`[i]
+  beta.posterior[i]=260+total[i]-pew1$`very liberal`[i]
+}
+posterior.mean=alpha.posterior/(alpha.posterior+beta.posterior)
+plot(y=posterior.mean,x=elect$vote_Obama_pct)
+text(elect$vote_Obama_pct,posterior.mean,labels=states,cex=0.7,pos = 3)
+```
+
+##(c)
+
+```{r}
+plot(y=very.liberal.prop,x=total)
+text(total,very.liberal.prop,labels=states,cex=0.7,pos = 3)
+```
+
+```{r}
+plot(y=posterior.mean,x=total)
+text(total,posterior.mean,labels=states,cex=0.7,pos = 3)
+```
+
+
