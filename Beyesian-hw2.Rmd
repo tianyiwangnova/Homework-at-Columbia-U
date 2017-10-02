@@ -1,0 +1,293 @@
+---
+title: "hw2"
+author: "Tianyi Wang"
+date: "2017Äê9ÔÂ26ÈÕ"
+output: html_document
+---
+
+#Chp3.4
+##(a)
+
+The prior distribution of p0 and p1 is Beta(1,1).
+The posterior distribution: p0: Beta(40,636); p1: Beta(23,659).
+We sample 1000 points from those distributions.
+
+```{r,warning=FALSE}
+alpha0=1+39
+beta0=1+674-39
+alpha1=1+22
+beta1=1+680-22
+p0=rbeta(1000,alpha0,beta0)
+p1=rbeta(1000,alpha1,beta1)
+par(mfrow=c(1,2))
+hist(p0,main ="simulations of p0")
+hist(p1,main ="simulations of p1")
+```
+
+##(b)
+
+```{r}
+odds.ratio=(p1/(1-p1))/(p0/(1-p0))
+odds.ratio.PI <- quantile(odds.ratio, c(.025, .975))
+odds.ratio.PI # 95% posterior probability interval
+hist(odds.ratio,breaks = 50); abline(v=odds.ratio.PI,lty=2)
+```
+
+
+#Chp3.11
+##(a)
+
+```{r}
+library(boot)
+x=c(-0.863,-0.296,-0.053,0.727)
+n=c(5,5,5,5)
+y=c(0,1,3,5)
+#prior
+prior<-function(a,b){
+  p=exp(-1/1.5*(a^2/4+(b-10)^2/100-a*(b-10)/20))
+  return(p)
+}
+#likelihood
+likelihood=function(a,b){
+  l=1
+  for (i in 1:4){
+    theta <- inv.logit(a + b*x[i])
+    l=l*theta^(y[i])*(1-theta)^(n[i]-y[i])
+  }
+  return(l)
+}
+#posterior density
+posterior.density=function(a,b){
+  pri=prior(a,b)
+  llh=likelihood(a,b)
+  posterior=pri*llh
+  return(posterior)
+}
+a=seq(-4,8,0.05)
+b=seq(-5,45,0.2)
+produce.coutour=function(fct){
+  matrix=matrix(1,length(a),length(b))
+  for (i in (1:length(a))){
+    matrix[i,]=fct(a[i],b)
+  }
+  return(matrix)
+}
+z=produce.coutour(posterior.density)
+par(mfrow=c(1,1))
+contour(a,b,z, nlevels=21,xlim=c(-3,4),ylim=c(0,30),xlab="alpha",ylab="beta",drawlabels=F)
+title("The contour plot of the posterior distribution")
+```
+
+
+```{r}
+delta <- (a[2] - a[1]) / 2
+epsilon <- (b[2] - b[1]) / 2
+posterior.a <- apply(z, 1, sum)  # marginal posterior for alpha
+alpha.sim <- rep(NA, 1000)
+beta.sim <- rep(NA, 1000)
+for(s in 1:1000){
+  i <- sample(length(a), 1, prob=posterior.a)
+  j <- sample(length(b), 1, prob=z[i,])
+  alpha.sim[s] <- a[i] + runif(1, -delta,  delta)
+  beta.sim[s] <- b[j] + runif(1, -epsilon, epsilon)
+}
+plot(alpha.sim, beta.sim)
+title(" scatterplot of 1000 random draws from the posterior")
+```
+
+```{r}
+index=which(beta.sim>0)
+#index=1000
+LD50.sim <- -alpha.sim / beta.sim
+LD50.PI <- quantile(LD50.sim, c(.025, .975))
+LD50.PI # 95% posterior probability interval
+hist(LD50.sim, breaks=30); abline(v=LD50.PI, lty=2);
+```
+
+
+##(b)
+```{r}
+#prior contour
+prior.z=produce.coutour(prior)
+#likelihood contour
+llh.z=produce.coutour(likelihood)
+par(mfrow=c(2,2))
+contour(a,b,prior.z,nlevels=21,xlim=c(-3,4),ylim=c(0,30),xlab="alpha",ylab="beta",drawlabels=F)
+title("The contour plot of the prior distribution")
+contour(a,b,llh.z, nlevels=15,xlim=c(-3,4),ylim=c(0,30),xlab="alpha",ylab="beta",drawlabels=F)
+title("The contour plot of the likelihood")
+contour(a,b,z, nlevels=15,xlim=c(-3,4),ylim=c(0,30),xlab="alpha",ylab="beta",drawlabels=F)
+title("The contour plot of the posterior distribution")
+```
+
+The scatterplot is a compromise between the prior distribution and the likelihood.
+
+##(c)
+
+The prior information decides a scope where the posterior will mainly be located. But the power of likelihood is stronger.
+
+#Chp3.12
+##(e)
+
+```{r}
+data1=read.csv("C://Users//Think//Documents//data.csv")
+y=data1$Fatal.accidents
+t=data1$Year-1975
+m1=lm(y~t)
+a=as.numeric(m1$coefficients[1])
+b=as.numeric(m1$coefficients[2])
+```
+
+**crude estimates:**
+```{r}
+c(a,b)
+```
+
+**uncertainties / standard deviations :**
+```{r}
+c(2.7494,0.4431)
+```
+
+
+##(f)&(g)
+
+```{r}
+28.87+c(-5,5)*2.7494 #15,42
+-0.9212+c(-5,5)*0.4431 #-3.14,1.29
+posterior=function(y,t,a,b){
+  p=1
+  for (i in 1:nrow(data1)){
+    m=a+b*t[i]
+    p=p*m^y[i]*exp(-m)/factorial(y[i])
+  }
+  return(p)
+}
+a=seq(15,42,0.2)
+b=seq(-3.14,1.29,0.02)
+matrix=matrix(1,length(a),length(b))
+for (i in (1:length(a))){
+    for (j in (1:length(b))){
+      xxx=(a[i]/12+b[j])<=0
+      if (xxx==TRUE){
+        matrix[i,j]=0
+      } else{
+        matrix[i,j]=posterior(y,t,a[i],b[j])
+      }
+    }
+}
+contour(a,b,matrix, nlevels=10,xlim=c(15,33),ylim=c(-2.8,1.3),xlab="alpha",ylab="beta",drawlabels = F)
+title("The contour plot of the posterior distribution")
+```
+
+
+
+```{r}
+delta <- (a[2] - a[1]) / 2
+epsilon <- (b[2] - b[1]) / 2
+posterior.a <- apply(matrix, 1, sum)  # marginal posterior for alpha
+alpha.sim <- rep(NA, 1000)
+beta.sim <- rep(NA, 1000)
+posterior.mean=rep(0,1000)
+for(s in 1:1000){
+  i <- sample(length(posterior.a), 1, prob=posterior.a)
+  j <- sample(length(b), 1, prob=matrix[i,])
+  posterior.mean[s]=matrix[i,j]
+  alpha.sim[s] <- a[i] + runif(1, -delta,  delta)
+  beta.sim[s] <- b[j] + runif(1, -epsilon, epsilon)
+}
+plot(alpha.sim, beta.sim)
+title(" scatterplot of 1000 random draws from the posterior")
+```
+
+```{r}
+hist(posterior.mean,main="histogram of the posterior density for the expected
+number of fatal accidents in 1986")
+```
+
+##(h)
+
+```{r}
+mean.sim <- alpha.sim+beta.sim*(1986-1976)
+mean.PI <- quantile(mean.sim, c(.025, .975))
+mean.PI # 95% posterior probability interval
+hist(mean.sim, breaks=30); abline(v=mean.PI, lty=2);
+```
+
+#Chp4.1
+##(b)
+
+```{r}
+first.dr=function(y,theta){
+  f=sum(2*(y-theta)/(1+(y-theta)^2))
+  return(f)
+}
+y=c(43, 44, 45, 46.5, 47.5)
+theta=seq(0,100,1)
+values=NULL
+for(i in 1:length(theta)){
+  values=c(values,first.dr(y,theta[i]))
+}
+plot(values~theta)
+theta=seq(40,50,0.1)
+values=NULL
+for(i in 1:length(theta)){
+  values=c(values,first.dr(y,theta[i]))
+}
+plot(values~theta)
+theta=seq(44,46,0.001)
+values=NULL
+for(i in 1:length(theta)){
+  values=c(values,first.dr(y,theta[i]))
+}
+print(paste("Posterior mode of theta",theta[which.min((values-0)^2)]))
+```
+
+##(c)
+
+```{r}
+theta=theta[which.min((values-0)^2)]
+I=-sum(2*(-1+(y-theta)^2)/(1+(y-theta)^2)^2)
+print(I)
+print(1/I)
+```
+
+**¦È|y~N(44.862,0.727)**
+
+```{r}
+q=seq(42,48,0.02)
+sample1=dnorm(q,44.862,0.727^0.5)
+sample1=sample1/sum(sample1)
+post=function(q){
+  l=length(q)
+  p=rep(0,l)
+  for (i in 1:l){
+    p[i]=prod(1/(1+(y-q[i])^2))
+  }
+  return(p)
+}
+sample2=post(q)
+sample2=sample2/sum(sample2)
+plot(q,sample1,type="l")
+lines(q,sample2,col="red",lty=20)
+legend(46,0.008,legend=c("normal","exact"),lty=19:20,col=1:2)
+```
+
+#Chp4.15
+##(b)
+**¦Ì|y~N(4/5*y,4/5)**
+```{r}
+(1+c(-1,1)*qnorm(0.75)*(4/5)^0.5)*5/4
+```
+**The coverage: P(0.496<=y<=2.004)**
+**y|¦Ì=1~N(1,1)**
+```{r}
+pnorm(2.004,1,1)-pnorm(0.496,1,1)
+```
+****The coverage is 53.518%
+
+##(c)
+```{r}
+mu0=seq(-5,8,0.05)
+coverage=pnorm(2.004,mu0,1)-pnorm(0.496,mu0,1)
+plot(coverage~mu0,type="l")
+```
