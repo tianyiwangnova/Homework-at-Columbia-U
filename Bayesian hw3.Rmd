@@ -1,0 +1,284 @@
+---
+title: "Bayesian hw3"
+author: "Tianyi Wang tw2567"
+date: "2017/10/15"
+output: html_document
+---
+
+#Chp5.13
+
+##(b)
+
+```{r}
+library(boot);
+Data <- read.csv("C://Users//Think//Downloads//bcc.csv")
+y <- Data$y; n <- Data$n;
+Sim.size <- 1000;
+mu <- mean(y/n); psi <- mu * (1-mu) / var(y/n) - 1;
+logit(mu); log(psi);
+logit.mu <- seq(-2.5, 0, .20); length(logit.mu);
+log.psi <- seq(0, 6, .20); length(log.psi);
+log.post.fun <- function(alpha, beta, y, n)
+{
+  J <- length(y)
+  lpost <- -2 * log(alpha + beta)
+  lpost <- lpost - J * lbeta(alpha, beta)
+  lpost <- lpost + sum( lbeta(alpha+y, beta+n-y) )
+  return(lpost)
+}
+I <- length(logit.mu); J <- length(log.psi);
+log.post <- matrix(NA, I, J);
+for(i in 1:I)
+{
+  for(j in 1:J)
+  {
+    mu <- inv.logit(logit.mu[i]); psi <- exp(log.psi[j]); 
+    alpha <- mu*psi; beta <- (1-mu)*psi;
+    log.post[i,j] <- log(alpha) + log(beta) + log.post.fun(alpha,beta,y,n)
+  }}
+maxie <- max(log.post); maxie;
+log.post <- log.post - maxie; rm(maxie);
+post <- exp(log.post); 
+contours <- c(.001, .01, seq(.05, .95, .10))
+contour(logit.mu, log.psi, post, levels=contours, drawlabels=F)
+```
+
+```{r}
+delta <- (logit.mu[2] - logit.mu[1]) / 2
+epsilon <- (log.psi[2] - log.psi[1]) / 2
+post.lm <- apply(post, 1, sum) # marginal posterior of logit.mu
+S <- Sim.size;
+logit.mu.sim <- rep(NA, S); log.psi.sim <- rep(NA, S);
+for(s in 1:S)
+{
+  i <- sample(I, 1, prob=post.lm)
+  j <- sample(J, 1, prob=post[i,])
+  logit.mu.sim[s] <- logit.mu[i] + runif(1, -delta, delta)
+  log.psi.sim[s] <- log.psi[j] + runif(1, -epsilon, epsilon)
+}
+
+contour(logit.mu, log.psi, post, levels=contours, drawlabels=F, 
+        xlab="log(alpha/beta)", ylab="log(alpha+beta)")
+
+points(logit.mu.sim, log.psi.sim, cex=.5, pch=19)
+```
+
+##(c)
+
+```{r}
+J <- length(y); J;
+mu.sim <- inv.logit(logit.mu.sim); psi.sim <- exp(log.psi.sim);
+alpha.sim <- mu.sim * psi.sim; beta.sim <- (1-mu.sim) * psi.sim;
+theta.sim <- rbeta(J*S, shape1=outer(y, alpha.sim, "+"), 
+                   shape2=outer(n-y, beta.sim, "+")) 
+theta.sim <- matrix(theta.sim, J, S)
+meds <- apply(theta.sim, 1, median)
+ints <- apply(theta.sim, 1, quantile, prob=c(.05, .95))
+obs <- jitter(y/n, factor=50)
+plot(obs, meds, xlim=range(ints), ylim=range(ints), pch=19, cex=.50, 
+     xlab="Observed rate", ylab="90% posterior interval")
+abline(0, 1, lty=2)
+for(j in 1:J){ lines(rep(obs[j],2), ints[,j]) }
+```
+
+For locations with lower observed rates, the sample median rates are higher. For locations with higher observed rates, the sample median rates are lower.
+
+##(d)
+
+```{r}
+p.mean=alpha.sim/(alpha.sim+beta.sim)
+quantile(p.mean,c(0.025,0.975))
+```
+
+14% to 27.6% of the vehicles are bicycles.
+
+##(e)
+
+```{r}
+p.new=rbeta(S,alpha.sim,beta.sim)
+y.new=rbinom(S,100,p.new)
+quantile(y.new, c(0.025, 0.975))
+```
+
+3 to 49 bicycles will pass from the residential street with bike route with the probability of 95%
+
+##(f)
+
+The plot of ¦È v.s. y/n fits well so beta distribution is reasonable.
+
+#Chp5.15
+
+##(a)
+
+We use normal approximation to the likelihood
+
+```{r}
+meta=read.table("C://Users//Think//Downloads//meta.txt",header = TRUE)
+#empirial logits
+y=log(meta$treated.deaths/(meta$treated.total-meta$treated.deaths))-log(meta$control.deaths/(meta$control.total-meta$control.deaths))
+#approximate sampling variance
+sigma=1/meta$control.deaths+1/(meta$control.total-meta$control.deaths)+1/meta$treated.deaths+1/(meta$treated.total-meta$treated.deaths)
+sigma=sigma^0.5
+Sim.size <- 1000
+J <- length(y)
+# Posterior distribution for hierarchical normal model
+log.post.tau.fun <- function(tau, y, sigma) # (5.21 on p. 117)
+{
+  V.mu <- 1 / sum( 1/(sigma^2 + tau^2) )
+  mu.hat <- V.mu * sum( y / (sigma^2 + tau^2) )
+  log.post <- ( log(V.mu) - sum(log(sigma^2 + tau^2) ) ) / 2
+  log.post <- log.post - 0.5 * sum( (y-mu.hat)^2 / (sigma^2 + tau^2) )
+  return(log.post)
+}
+log.tau <- seq(-2.2, -0.6, .01);
+T <- length(log.tau); T; 
+log.post.tau <- rep(NA, T)
+for(t in 1:T)
+{
+  log.post.tau[t] <- log.post.tau.fun(tau=exp(log.tau[t]), y, sigma)
+}
+maxie <- max(log.post.tau)
+log.post.tau <- log.post.tau - maxie; rm(maxie);
+post.tau <- exp(log.post.tau)
+# Figure 5.5 
+plot(exp(log.tau), post.tau, type="l", xlab="tau", ylab="p(tau|y)")
+```
+
+##(b)
+
+```{r}
+J <- length(y)
+ETE <- matrix(NA, T, J)
+for(t in 1:T)
+{
+  tau <- exp(log.tau[t])
+  V.mu <- 1 / sum( 1 / (sigma^2 + tau^2) )
+  mu.hat <- V.mu * sum( y / (sigma^2 +  tau^2) )
+  ETE[t,] <- (y/sigma^2 + mu.hat/tau^2) / (1/sigma^2 + 1/tau^2)
+}
+matplot(exp(log.tau), ETE, type="l", xlab="tau", ylab="E(theta|tau,y)",
+        ylim=range(ETE) + c(-0.15,0.15))
+```
+
+
+
+```{r}
+VTE <- matrix(NA, T, J)
+for(t in 1:T)
+{
+  tau <- exp(log.tau[t])
+  V <- 1 / (1/sigma^2 + 1/tau^2)
+  V.mu <- 1 / sum( 1 / (sigma^2 + tau^2) )
+  VTE[t,] <- V + V^2 * V.mu / tau^4
+}
+matplot(exp(log.tau), sqrt(VTE), type="l", xlab="tau", 
+        ylab="sd(theta|tau,y)", ylim=range(sqrt(VTE)) + c(-0.1,0.1))
+```
+
+##(c)
+
+```{r}
+S <- Sim.size
+theta.sim <- matrix(NA, J, S)
+ytilde.sim <- matrix(NA, J, S)
+delta <- (log.tau[2] - log.tau[1]) / 2
+post.log.tau <- exp(log.tau) * post.tau
+for(s in 1:S)
+{
+  t <- sample(T, 1, prob=post.log.tau)
+  tau <- exp(log.tau[t] + runif(1, -delta, delta))
+  V.mu <- 1 / sum( 1 / (sigma^2 + tau^2) )
+  mu.hat <- V.mu * sum( y / (sigma^2 +  tau^2) )
+  mu <- rnorm(1, mean=mu.hat, sd=sqrt(V.mu))
+  V <- 1 / (1/sigma^2 + 1/tau^2) 
+  theta.hat <- V * (y/sigma^2 + mu/tau^2)
+  theta.sim[,s] <- rnorm(J, mean=theta.hat, sd=sqrt(V))
+  ytilde.sim[,s] <- rnorm(J, mean=theta.sim[,s], sd=sigma)
+}
+quant <- function(x){ quantile(x, probs=c(.025,.25,.50,.75,.975)) }
+Results <- data.frame(t(apply(theta.sim, 1, quant)))
+posterior_median=Results$X50.
+plot(posterior_median~y)
+```
+
+**Rank the numbers according to the sample size (from small to large). Studies with the smallest sample sizes are pooled the most towards the mean.**
+
+```{r}
+r=rank(meta$control.total)
+posterior_median_r=posterior_median[r]
+y_r=y[r]
+plot(posterior_median_r~y_r)
+```
+
+##(d)
+
+```{r}
+#sample tau
+tau.series=exp(log.tau);I=length(tau.series)
+delta=(tau.series[2]-tau.series[1])/2
+tau.sim=rep(NA,S)
+mu.sim=rep(NA,S)
+theta.sim=rep(NA,S)
+for(s in 1:S){
+  i=sample(I,1,prob = post.log.tau)
+  tau.sim[s]=tau.series[i]+runif(1, -delta, delta)
+  tau=tau.sim[s]
+  V.mu <- 1 / sum( 1/(sigma^2 + tau^2) )
+  mu.hat <- V.mu * sum( y / (sigma^2 + tau^2) )
+  mu.sim[s]=rnorm(1,mean=mu.hat,sd=sqrt(V.mu))
+  theta.sim[s]=rnorm(1,mean = mu.sim[s],sd=tau)
+}
+hist(theta.sim)
+```
+
+##(e)
+
+```{r}
+crude.estimate=rep(NA,S)
+for(i in 1:S){
+  crude.estimate[i]=rnorm(1,mean=theta.sim[i],sd=0.5)
+}
+hist(crude.estimate)
+```
+
+#Chp6.10 (a)
+
+```{r}
+football.data=read.table("C://Users//Think//Downloads//football.txt",header = T)
+spread <- football.data$spread
+outcome=football.data$favorite-football.data$underdog
+location.actual.data=sample(1:12,1)
+print(paste("the graph for real data is NO.",location.actual.data))
+#generate replicate data
+replicate=matrix(NA,nrow=nrow(football.data),ncol=12)
+for(i in 1:12){
+  if(i==location.actual.data){
+    replicate[,i]=outcome-spread
+  } else{
+    replicate[,i]=rnorm(nrow(football.data),mean=0,sd=14)
+  }
+}
+#plot
+par(mfrow=c(3,4))
+for (i in 1:12){
+  plot(replicate[,i]~spread,ylab="outcome-spread")
+}
+```
+
+
+```{r}
+par(mfrow=c(3,4))
+x=seq(0,1,0.01)
+for (i in 1:12){
+  hist(replicate[,i],ylab="outcome-spread",probability = TRUE)
+  curve(dnorm(x, mean=0, sd=14), col="darkblue", lwd=2, add=TRUE, yaxt="n")
+}
+```
+
+**Our model fits well.**
+
+
+
+
+
+
