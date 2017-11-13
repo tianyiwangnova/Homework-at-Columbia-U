@@ -1,0 +1,306 @@
+---
+title: "Bayesian hw4"
+author: "Tianyi Wang, tw2567"
+date: "20171111"
+output: html_document
+---
+
+#Chp10.5
+
+##(a)
+
+```{r}
+library(boot)
+set.seed(5224) 
+alpha <- 2*rt(1, 4); beta <- rt(1, 4); 
+x <- runif(10); n <- rpois(10, 5); 
+theta <- inv.logit(alpha + beta*x); 
+y <- rbinom(10, size=n, prob=theta); 
+```
+
+##(b)
+
+```{r}
+joint.posterior=function(a,b,n=n,x=x,y=y){
+  part1=((1+0.0625*(a)^2)*(1+0.25*b^2))^(-5/2)
+  part2=1
+  theta=inv.logit(a+b*x)
+  for(i in 1:length(n)){
+    part3=(theta[i]^y[i])*((1-theta[i])^(n[i]-y[i]))
+    #x[i]*ppois(n[i],5)*theta[i]^y[i]*(1-theta[i])^(n[i]-y[i])
+    part2=part2*part3
+  }
+  post=part1*part2
+  return(post)
+}
+```
+
+```{r}
+a1=2*rt(1000, 4)
+b1=rt(1000, 4)
+post1=rep(0,1000)
+for(j in 1:1000){
+  post1[j]=joint.posterior(a1[j],b1[j],n,x,y)
+}
+max(post1)
+post.max=2.1*10^(-14)
+```
+
+```{r}
+#range of a:[-15,15],b:[-7.5,7.5],poat:[0,6.6e-13]
+a.sim=NULL
+b.sim=NULL
+post.sim=NULL
+while(length(a.sim)<1000){
+  a=runif(1,-15,15);b=runif(1,-7.5,7.5);post=runif(1,0,post.max)
+  post.cmp=joint.posterior(a,b,n,x,y)
+  j=(post<=post.cmp)
+  if(j==TRUE){
+    a.sim=c(a.sim,a)
+    b.sim=c(b.sim,b)
+    post.sim=c(post.sim,post.cmp)
+  }
+}
+```
+
+**scatter plot**
+
+```{r}
+plot(a.sim,b.sim)
+```
+
+**quantiles**
+
+```{r}
+q=c(.025, .25, .50, .75, .975)
+quantile(a.sim,q)
+quantile(b.sim,q)
+```
+
+**E(alpha|y) and E(beta|y)**
+
+```{r}
+mean(a.sim);mean(b.sim)
+```
+
+##(b)
+
+```{r}
+library(mvnmle)
+data0=as.matrix(data.frame(a.sim,b.sim))
+mlest(data0)
+```
+
+##(d)
+
+```{r}
+mle=mlest(data0)
+mu=mle$muhat
+sigma=mle$sigmahat
+library(MASS)
+sim1=mvrnorm(n = 1000, mu, sigma)
+a.sim1=sim1[,1]
+b.sim1=sim1[,2]
+```
+
+**importance sampling**
+
+```{r}
+w=rep(0,1000)
+real.post=rep(0,1000)
+g=rep(0,1000)
+library(mvtnorm)
+for(i in 1:1000){
+  real.post[i]=joint.posterior(a.sim1[i],b.sim1[i],n,x,y)
+  g[i]=dmvnorm(c(a.sim1[i],b.sim1[i]),mu,sigma)
+}
+w=real.post/g
+ea=sum(a.sim1*w)/sum(w)
+eb=sum(b.sim1*w)/sum(w)
+```
+
+**E(a|y) and E(b|y)**
+
+```{r}
+ea;eb
+```
+
+##(e)
+
+```{r}
+normalized.w=w*1000/sum(w)
+1/sum(normalized.w^2)
+```
+
+#Chp11.3
+
+```{r}
+data0=data.frame(m1=c(83,92,92,46,67),
+                 m2=c(117,109,114,104,87),
+                 m3=c(101,93,92,86,67),
+                 m4=c(105,119,116,102,116),
+                 m5=c(79,97,103,79,92),
+                 m6=c(57,92,104,77,100)
+                 )
+```
+
+**gibbs sampling**
+
+We first obtain starting points for theta_j.
+
+```{r}
+chain.length <- 2000
+
+
+# Key in data
+
+J <- 6
+
+yA <- data0[,1]
+
+yB <- data0[,2]
+
+yC <- data0[,3]
+
+yD <- data0[,4]
+
+yE <- data0[,5]
+
+yF <- data0[,6]
+
+n <- c(length(yA), length(yB), length(yC), length(yD), length(yE), length(yF))
+
+ybar <- c(mean(yA), mean(yB), mean(yC), mean(yD), mean(yE), mean(yF))
+
+s <- c(sd(yA), sd(yB), sd(yC), sd(yD), sd(yE), sd(yF))
+
+# Gibbs update functions
+
+theta.update <- function(mu, sigma, tau, J, n, ybar)
+{
+ V.theta <- 1 / (1/tau^2 + n/sigma^2)
+ theta.hat <- V.theta * (mu/tau^2 + n*ybar/sigma^2)
+ rnorm(J, mean=theta.hat, sd=sqrt(V.theta))
+}
+
+
+mu.update <- function(theta, tau, J)
+{
+ mu.hat <- mean(theta)
+ rnorm(1, mean=mu.hat, sd=tau/sqrt(J))
+}
+
+
+sigma.update <- function(theta, ybar, s)
+{
+ sigma2.hat <- sum((n-1)*s^2 + n*(ybar-theta)^2) / sum(n)
+ sigma2 <- sum(n) * sigma2.hat / rchisq(1, df=sum(n))
+ sqrt(sigma2)
+}
+
+
+tau.update <- function(J, theta, mu)
+{
+ tau2.hat <- sum((theta-mu)^2) / (J-1)
+ tau2 <- (J-1) * tau2.hat / rchisq(1, df=J-1)
+ sqrt(tau2)
+}
+
+
+
+# Putting it together
+
+# Inputs: chain length, data, starting values
+
+build.chain <- function(chain.length, J, n, y, s, theta0, mu0, sigma0, tau0)
+{
+ T <- chain.length
+ theta.chain <- matrix(NA, T, J)
+ mu.chain <- rep(NA, T); sigma.chain <- rep(NA, T); tau.chain <- rep(NA, T);
+ theta <- theta0; mu <- mu0; sigma <- sigma0; tau <- tau0;
+ for(t in 1:T)
+ {
+  theta <- theta.update(mu, sigma, tau, J, n, ybar)
+  mu <- mu.update(theta, tau, J)
+  sigma <- sigma.update(theta, ybar, s)
+  tau <- tau.update(J, theta, mu)
+  theta.chain[t,] <- theta; mu.chain[t] <- mu;
+  sigma.chain[t] <- sigma; tau.chain[t] <- tau;
+ }
+ list(theta.chain=theta.chain, mu.chain=mu.chain, 
+     sigma.chain=sigma.chain, tau.chain=tau.chain)
+}
+
+
+
+# Run a single chain
+
+# Initial values
+
+theta0 <- ybar; mu0 <- mean(theta0); sigma0 <- sqrt(mean(s^2)); tau0 <- sd(ybar);
+
+chain <- build.chain(chain.length, J, n, y, s, theta0, mu0, sigma0, tau0)
+
+theta.chain <- chain$theta.chain; mu.chain <- chain$mu.chain;
+
+sigma.chain <- chain$sigma.chain; tau.chain <- chain$tau.chain;
+
+rm(chain)
+
+
+Results <- matrix(NA, J+3, 5)
+
+probs <- c(.025, .25, .50, .75, .975)
+
+for(j in 1:J)
+{
+ Results[j, ] <- quantile(theta.chain[,j], probs=probs)
+}
+
+Results[J+1,] <- quantile(mu.chain, probs=probs)
+
+Results[J+2, ] <- quantile(sigma.chain, probs=probs)
+
+Results[J+3, ] <- quantile(tau.chain, probs=probs)
+
+rownames(Results) <- c(paste("theta",1:J,sep=""), "mu", "sigma", "tau")
+
+colnames(Results) <- paste(probs*100, "pct", sep="")
+
+round(Results, 1)
+```
+
+**plots and quantiles**
+
+```{r}
+hist(theta.chain[,6],main="posterior distribution
+of the mean of the quality measurements of the sixth machine")
+quantile(theta.chain[,6])
+```
+
+y.posterior~N(theta6,sigma)
+
+```{r}
+m6=rep(0,2000)
+for(i in 1:2000){
+  m6[i]=rnorm(1,mean=theta.chain[i,6],sd=sigma.chain[i])
+}
+hist(m6,main="predictive
+distribution for another quality measurement of the sixth machine")
+quantile(m6)
+```
+
+theta7~N(mu,tau)
+
+```{r}
+theta7=rep(0,2000)
+for(i in 1:2000){
+  theta7[i]=rnorm(1,mean=mu.chain[i],sd=tau.chain[i])
+}
+index=which(theta7<=0)
+theta7=theta7[-index]
+hist(theta7,main="posterior
+distribution of the mean of the quality measurements of the seventh machine")
+quantile(theta7)
+```
+
